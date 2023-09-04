@@ -1,19 +1,27 @@
-use console::{self, Term};
-use console::Key;
-use std::io::{self, Write};
+use std::fmt::Debug;
 use std::process::{Command, Child};
 use std::error::Error;
+use std::fmt;
 
 mod terminal;
 
+const PROMPT_STR: &'static str = &"rash> ";
+
 fn main() {
-    let cmd = get_cmd_interactive();
+
+    prompt();
+
+    let cmd = terminal::get_cmd_interactive();
     if let Ok(cmd) = cmd {
         let mut cmd_vec = cmd.split(' ').collect::<Vec<_>>();
         let p = Program::from_args(cmd_vec).unwrap();
         let mut c = p.spawn().unwrap();
         c.wait();
     }
+}
+
+fn prompt() {
+    print!("{}", PROMPT_STR);
 }
 
 struct Program<'a> {
@@ -33,11 +41,20 @@ impl<'a> Program<'a> {
         Ok(Self { name: arguments.remove(0), arguments })
     }
 
-    fn spawn(&self) -> Result<Child, &str> {
+    fn spawn(&self) -> Result<Child, String> {
         Command::new(self.name)
             .args(self.arguments.iter())
             .spawn()
-            .or(Err("Could not spawn child from this program"))
+            .or(Err(format!("Could not spawn from {:?}", &self)))
+    }
+}
+
+impl<'a> Debug for Program<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProgramArgs")
+            .field("name", &self.name)
+            .field("arguments", &self.arguments)
+            .finish()
     }
 }
 

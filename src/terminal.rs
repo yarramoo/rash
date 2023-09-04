@@ -1,7 +1,11 @@
+use console::{self, Key, Term};
+use std::io::{self, Write};
+
+use crate::PROMPT_STR;
 
 // Interactive shell that allows users to input commands and tracks the command string as it is being typed
 // Use this later to auto suggest based on current unfinished input
-fn get_cmd_interactive() -> io::Result<String> {
+pub fn get_cmd_interactive() -> io::Result<String> {
     // Make a terminal stdout handle
     let mut term = Term::stdout();
     // Terminal height and width
@@ -18,13 +22,14 @@ fn get_cmd_interactive() -> io::Result<String> {
                 // Add the character. Add a new line if the current terminal line is full.
                 // Clear the line and reprint the line with the new character
                 buf.push(c);
-                if j - i == t_width as usize - 1 {
+                if j - i == t_width as usize - 1 || i == 0 && j == t_width as usize - PROMPT_STR.len() {
                     term.write_line("")?;
                     i = j;
                 }
-                term.clear_line()?;
+                // term.clear_line()?;
                 j += 1;
-                term.write_all(&buf.as_bytes()[i..j])?;
+                term.write_all(c.to_string().as_bytes())?;
+                // term.write_all(&buf.as_bytes()[i..j])?;
             },
             Key::Backspace => {
                 // Delete a character. Reduce the slice of the buffer that is shown.
