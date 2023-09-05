@@ -19,9 +19,9 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     let mut term = Term::stdout();
     let terminal_width = term.size().1 as usize;
     // Command String buffer 
-    let mut buffer = String::from(PROMPT_STR);
-    let (mut buf_window_start_i, mut buf_window_end_i) = (0, PROMPT_STR.len());
-    let mut cursor_i = PROMPT_STR.len();
+    // let mut buffer = String::from(TEST_STR);
+    let mut buffer = "m".repeat(terminal_width * 5 + terminal_width / 9);
+    let mut cursor_i = buffer.len();
 
     term.write_all(buffer.as_bytes())?;
 
@@ -42,17 +42,22 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 // Delete a character. Reduce the slice of the buffer that is shown.
                 // If the current terminal line empties then move the cursor up and to the right to edit the above line
                 // Adjust slice into buffer
-                if buf_window_end_i == PROMPT_STR.len() { continue; }
-                let deleted_char = buffer.pop();
-                if buf_window_start_i == buf_window_end_i {
+                if cursor_i == PROMPT_STR.len() { continue; }
+                buffer.remove(cursor_i-1);
+                if cursor_i % terminal_width == 1 {
+                    term.clear_line()?;
+                    term.move_cursor_left(1);
+                    cursor_i -= 1;
+                    continue;
+                }
+                cursor_i -= 1;
+                update_terminal(&mut term, &buffer, cursor_i);
+                // term.move_cursor_left(1)?;
+                // term.move_cursor_left(1)?;
+                if cursor_i % terminal_width == terminal_width - 1 {
                     term.move_cursor_up(1)?;
                     term.move_cursor_right(terminal_width)?;
-                    buf_window_start_i = buf_window_end_i - terminal_width;
-                }                
-                buf_window_end_i -= 1;
-                cursor_i -= 1;
-                term.clear_line()?;
-                term.write_all(&buffer.as_bytes()[buf_window_start_i..buf_window_end_i])?;
+                }
             },
             Key::Enter => {
                 // Input command
@@ -66,7 +71,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
             Key::ArrowRight => {
                 // Move right if we are still within the buffer space
                 // Two cases. a) we are within a line so we just move right. b) we are on the right edge and must go down a line 
-                if cursor_i == buf_window_end_i { continue; }
+                if cursor_i == buffer.len() { continue; }
                 if cursor_i % terminal_width != terminal_width - 1 {
                     term.move_cursor_right(1)?;
                 } else {
@@ -87,6 +92,29 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 }
                 cursor_i -= 1;
             },
+            Key::ArrowUp => {
+                if cursor_i < terminal_width { continue; }
+                if cursor_i - terminal_width < PROMPT_STR.len() {
+                    let r = terminal_width - (cursor_i - PROMPT_STR.len());
+                    term.move_cursor_right(r)?;
+                    cursor_i = PROMPT_STR.len();
+                } else {
+                    cursor_i -= terminal_width;
+                }
+                term.move_cursor_up(1)?;
+            },
+            Key::ArrowDown => {
+                if buffer.len() - cursor_i < buffer.len() % terminal_width {
+                    continue;
+                }
+                if buffer.len() - cursor_i >= terminal_width {
+                    cursor_i += terminal_width;
+                } else {
+                    term.move_cursor_left(terminal_width - (buffer.len() - cursor_i));
+                    cursor_i = buffer.len();
+                }
+                term.move_cursor_down(1)?;
+            }
             _ => {},
         };
     }
@@ -114,8 +142,10 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor_i: usize) -> io::Result
         }
         i += terminal_width;
     } 
-    // Move cursor back to previous position 
-    term.move_cursor_up(lines_after_cursor - 1);
+    // Move cursor back to previous position
+    if lines_after_cursor > 0 {
+        term.move_cursor_up(lines_after_cursor - 1);
+    }
     term.move_cursor_left(terminal_width);
     term.move_cursor_right(prev_cursor_position % terminal_width);
     Ok(())
