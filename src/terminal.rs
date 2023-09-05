@@ -20,7 +20,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     let terminal_width = term.size().1 as usize;
     // Command String buffer 
     // let mut buffer = String::from(TEST_STR);
-    let mut buffer = "m".repeat(terminal_width * 5 + terminal_width / 9);
+    let mut buffer = "m".repeat(terminal_width - 1);
     let mut cursor_i = buffer.len();
 
     term.write_all(buffer.as_bytes())?;
@@ -29,6 +29,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
         let key = term.read_key()?;
         match key {
             Key::Char(c) => {
+                // Add a character. Move cursor down if reached the end of line
                 buffer.insert(cursor_i, c);
                 update_terminal(&mut term, &buffer, cursor_i);
                 cursor_i += 1;
@@ -39,25 +40,19 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 }
             },
             Key::Backspace => {
-                // Delete a character. Reduce the slice of the buffer that is shown.
-                // If the current terminal line empties then move the cursor up and to the right to edit the above line
-                // Adjust slice into buffer
+                // Remove a character. More cursor up if deleting past start of line 
                 if cursor_i == PROMPT_STR.len() { continue; }
                 buffer.remove(cursor_i-1);
-                if cursor_i % terminal_width == 1 {
-                    term.clear_line()?;
-                    term.move_cursor_left(1);
-                    cursor_i -= 1;
-                    continue;
-                }
                 cursor_i -= 1;
-                update_terminal(&mut term, &buffer, cursor_i);
-                // term.move_cursor_left(1)?;
-                // term.move_cursor_left(1)?;
+                // Special case when removing the last character in a line
+                if cursor_i % terminal_width == 0 {
+                    term.clear_line()?;
+                }
                 if cursor_i % terminal_width == terminal_width - 1 {
                     term.move_cursor_up(1)?;
                     term.move_cursor_right(terminal_width)?;
                 }
+                update_terminal(&mut term, &buffer, cursor_i);
             },
             Key::Enter => {
                 // Input command
