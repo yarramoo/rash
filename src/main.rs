@@ -5,14 +5,13 @@ use std::fmt;
 
 mod terminal;
 
-const PROMPT_STR: &'static str = &"rash> ";
+const PROMPT_STR: &'static str = &"rash>-";
 
 fn main() {
 
-    prompt();
-
     let cmd = terminal::get_cmd_interactive();
     if let Ok(cmd) = cmd {
+        println!("Received: {cmd}");
         let mut cmd_vec = cmd.split(' ').collect::<Vec<_>>();
         let p = Program::from_args(cmd_vec).unwrap();
         let mut c = p.spawn().unwrap();

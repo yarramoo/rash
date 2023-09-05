@@ -9,11 +9,15 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     // Make a terminal stdout handle
     let mut term = Term::stdout();
     // Terminal height and width
-    let (_t_height, t_width) = term.size();
+    let t_width= term.size().1 as usize;
     // String buffer to hold command
-    let mut buf = String::new();
+    let mut buf = String::from(PROMPT_STR);
     // Indices into the buffer to track the bottom-most line being edited
-    let (mut i, mut j) = (0, 0);
+    let (mut i, mut j) = (0, PROMPT_STR.len());
+    // Index of cursor position. Used for cursor movement
+    let mut cursor_i = PROMPT_STR.len();
+    // Write the prompt to the terminal
+    term.write_all(buf.as_bytes())?;
     // Loop on key input
     loop {
         let key = term.read_key()?;
@@ -22,12 +26,12 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 // Add the character. Add a new line if the current terminal line is full.
                 // Clear the line and reprint the line with the new character
                 buf.push(c);
-                if j - i == t_width as usize - 1 || i == 0 && j == t_width as usize - PROMPT_STR.len() {
+                j += 1;
+                if j - i == t_width - 1 {
                     term.write_line("")?;
                     i = j;
                 }
                 // term.clear_line()?;
-                j += 1;
                 term.write_all(c.to_string().as_bytes())?;
                 // term.write_all(&buf.as_bytes()[i..j])?;
             },
@@ -35,14 +39,14 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 // Delete a character. Reduce the slice of the buffer that is shown.
                 // If the current terminal line empties then move the cursor up and to the right to edit the above line
                 // Adjust slice into buffer
+                if j == PROMPT_STR.len() { continue; }
                 let deleted_char = buf.pop();
-                if deleted_char.is_none() { continue; }
                 j -= 1;
                 term.clear_line()?;
                 if i == j && i != 0 {
                     term.move_cursor_up(1)?;
-                    term.move_cursor_right(t_width as usize)?;
-                    i = j - (t_width-1) as usize;
+                    term.move_cursor_right(t_width)?;
+                    i = j - (t_width-1);
                     term.clear_line()?;
                 }
                 term.write_all(&buf.as_bytes()[i..j])?;
@@ -55,9 +59,11 @@ pub fn get_cmd_interactive() -> io::Result<String> {
             Key::Tab => {
                 // Logic for making regex suggestions goes here
                 todo!();
-            }
+            },
+            Key::ArrowRight => term.move_cursor_right(1)?,
+            Key::ArrowLeft  => term.move_cursor_left(1)?,
             _ => {},
         };
     }
-    Ok(buf)
+    Ok(buf.split_off(PROMPT_STR.len()))
 }
