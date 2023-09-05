@@ -1,13 +1,17 @@
 use std::fmt::Debug;
-use std::process::{Command, Child};
+use std::process::{Command, Child, exit};
 use std::error::Error;
 use std::fmt;
+
+use terminal::test_term_size;
 
 mod terminal;
 
 const PROMPT_STR: &'static str = &"rash>-";
 
 fn main() {
+
+    test_term_size();
 
     let cmd = terminal::get_cmd_interactive();
     if let Ok(cmd) = cmd {
