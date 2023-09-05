@@ -29,44 +29,14 @@ pub fn get_cmd_interactive() -> io::Result<String> {
         let key = term.read_key()?;
         match key {
             Key::Char(c) => {
-                // Add the character. Clear the line and reprint the line with the new character
-                // Add a new line if the current terminal line is full.
                 buffer.insert(cursor_i, c);
-                // cursor_i += 1;
-                // update_terminal(&mut term, &buffer, cursor_i);
-
-                // To update what is shown on the screen, all lines that are updated must be refreshed
-                // Count the number of lines including and below the cursor position
-                // Clear those lines
-                // Write those lines again by calculating the window into the buffer 
-                let prev_cursor_position = cursor_i;
-                // Find the line
-                let current_line_start_i = cursor_i - cursor_i % terminal_width;
-                let chars_after_cursor = buffer.len() - current_line_start_i;
-                let lines_after_cursor = chars_after_cursor / terminal_width
-                    + if chars_after_cursor % terminal_width == 0 {0} else {1};
-                // Replace the lines below with updated buffer
-                let mut i = current_line_start_i;
-                while i < buffer.len() {
-                    term.clear_line()?;
-                    let j = (i + terminal_width).min(buffer.len());
-                    if j < buffer.len() {
-                        term.write_line(&buffer.as_str()[i..j])?;
-                    } else {
-                        term.write_all(&buffer.as_bytes()[i..j])?;
-                    }
-                    i += terminal_width;
-                }                
-                
-                term.move_cursor_left(terminal_width);
-                term.move_cursor_up(lines_after_cursor - 1);
-                if prev_cursor_position % terminal_width == terminal_width - 1 {
-                    term.write_line("");
-                    term.move_cursor_down(1)?;
-                } else {
-                    term.move_cursor_right(prev_cursor_position % terminal_width + 1);
-                }
+                update_terminal(&mut term, &buffer, cursor_i);
                 cursor_i += 1;
+                term.move_cursor_right(1)?;
+                if cursor_i % terminal_width == 0 {
+                    term.write_line("")?;
+                    term.move_cursor_down(1)?;
+                }
             },
             Key::Backspace => {
                 // Delete a character. Reduce the slice of the buffer that is shown.
@@ -122,3 +92,32 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     }
     Ok(buffer.split_off(PROMPT_STR.len()))
 }
+
+
+fn update_terminal(term: &mut Term, buffer: &str, cursor_i: usize) -> io::Result<()> {
+    // Find the number of lines that need updating
+    let prev_cursor_position = cursor_i;
+    let terminal_width = term.size().1 as usize;
+    let current_line_start_i = cursor_i - cursor_i % terminal_width;
+    let chars_after_cursor = buffer.len() - current_line_start_i;
+    let lines_after_cursor = chars_after_cursor / terminal_width
+        + if chars_after_cursor % terminal_width == 0 {0} else {1};
+    // Replace the lines below with updated buffer
+    let mut i = current_line_start_i;
+    while i < buffer.len() {
+        term.clear_line()?;
+        let j = (i + terminal_width).min(buffer.len());
+        if j < buffer.len() {
+            term.write_line(&buffer[i..j])?;
+        } else {
+            term.write_all(&buffer.as_bytes()[i..j])?;
+        }
+        i += terminal_width;
+    } 
+    // Move cursor back to previous position 
+    term.move_cursor_up(lines_after_cursor - 1);
+    term.move_cursor_left(terminal_width);
+    term.move_cursor_right(prev_cursor_position % terminal_width);
+    Ok(())
+}
+
