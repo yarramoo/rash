@@ -47,6 +47,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 // Special case when removing the last character in a line
                 if cursor_i % terminal_width == 0 {
                     term.clear_line()?;
+                    continue;
                 }
                 if cursor_i % terminal_width == terminal_width - 1 {
                     term.move_cursor_up(1)?;
