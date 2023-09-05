@@ -1,13 +1,10 @@
 use std::fmt::Debug;
-use std::process::{Command, Child, exit};
-use std::error::Error;
+use std::process::{Command, Child};
 use std::fmt;
-
-use terminal::test_term_size;
 
 mod terminal;
 
-const PROMPT_STR: &'static str = &"rash>-";
+const PROMPT_STR: &str = "rash>-";
 
 fn main() {
 
@@ -15,15 +12,11 @@ fn main() {
     let cmd = terminal::get_cmd_interactive();
     if let Ok(cmd) = cmd {
         println!("Received: {cmd}");
-        let mut cmd_vec = cmd.split(' ').collect::<Vec<_>>();
+        let cmd_vec = cmd.split(' ').collect::<Vec<_>>();
         let p = Program::from_args(cmd_vec).unwrap();
         let mut c = p.spawn().unwrap();
-        c.wait();
+        c.wait().unwrap();
     }
-}
-
-fn prompt() {
-    print!("{}", PROMPT_STR);
 }
 
 struct Program<'a> {
@@ -37,7 +30,7 @@ impl<'a> Program<'a> {
     }
     
     fn from_args(mut arguments: Vec<&'a str>) -> Result<Self, &'static str> {
-        if arguments.len() < 1 {
+        if arguments.is_empty() {
             return Err("Cannot build program from empty string");
         }
         Ok(Self { name: arguments.remove(0), arguments })

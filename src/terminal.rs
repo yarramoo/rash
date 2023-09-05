@@ -1,14 +1,15 @@
 use console::{self, Key, Term};
-use std::io::{self, Write, BufRead};
+use std::{io::{self, Write}, process::Termination};
 
 use crate::PROMPT_STR;
 
+#[allow(dead_code)]
 pub fn test_term_size() -> io::Result<String> {
     let mut term = Term::stdout();
     let terminal_width = term.size().1 as usize;
     let s = "a".repeat(terminal_width + 1);
     term.write_line(&terminal_width.to_string())?;
-    term.write_all(&s.as_bytes())?;
+    term.write_all(s.as_bytes())?;
     Ok(String::new())
 }
 
@@ -19,8 +20,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     let mut term = Term::stdout();
     let terminal_width = term.size().1 as usize;
     // Command String buffer 
-    // let mut buffer = String::from(TEST_STR);
-    let mut buffer = "m".repeat(terminal_width - 1);
+    let mut buffer = "m".repeat(terminal_width * 3 - terminal_width / 3);
     let mut cursor_i = buffer.len();
 
     term.write_all(buffer.as_bytes())?;
@@ -31,12 +31,11 @@ pub fn get_cmd_interactive() -> io::Result<String> {
             Key::Char(c) => {
                 // Add a character. Move cursor down if reached the end of line
                 buffer.insert(cursor_i, c);
-                update_terminal(&mut term, &buffer, cursor_i);
+                update_terminal(&mut term, &buffer, cursor_i)?;
                 cursor_i += 1;
                 term.move_cursor_right(1)?;
                 if cursor_i % terminal_width == 0 {
                     term.write_line("")?;
-                    term.move_cursor_down(1)?;
                 }
             },
             Key::Backspace => {
@@ -45,7 +44,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 buffer.remove(cursor_i-1);
                 cursor_i -= 1;
                 // Special case when removing the last character in a line
-                if cursor_i % terminal_width == 0 {
+                if cursor_i % terminal_width == 0 && cursor_i == buffer.len() {
                     term.clear_line()?;
                     continue;
                 }
@@ -53,7 +52,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                     term.move_cursor_up(1)?;
                     term.move_cursor_right(terminal_width)?;
                 }
-                update_terminal(&mut term, &buffer, cursor_i);
+                update_terminal(&mut term, &buffer, cursor_i)?;
             },
             Key::Enter => {
                 // Input command
@@ -106,7 +105,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 if buffer.len() - cursor_i >= terminal_width {
                     cursor_i += terminal_width;
                 } else {
-                    term.move_cursor_left(terminal_width - (buffer.len() - cursor_i));
+                    term.move_cursor_left(terminal_width - (buffer.len() - cursor_i))?;
                     cursor_i = buffer.len();
                 }
                 term.move_cursor_down(1)?;
@@ -122,10 +121,13 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor_i: usize) -> io::Result
     // Find the number of lines that need updating
     let prev_cursor_position = cursor_i;
     let terminal_width = term.size().1 as usize;
+
     let current_line_start_i = cursor_i - cursor_i % terminal_width;
+
     let chars_after_cursor = buffer.len() - current_line_start_i;
-    let lines_after_cursor = chars_after_cursor / terminal_width
-        + if chars_after_cursor % terminal_width == 0 {0} else {1};
+    // let lines_after_cursor = chars_after_cursor / terminal_width + (chars_after_cursor % terminal_width != 0) as usize;
+    let lines_after_cursor = (chars_after_cursor + terminal_width - 1) / terminal_width;
+    
     // Replace the lines below with updated buffer
     let mut i = current_line_start_i;
     while i < buffer.len() {
@@ -140,10 +142,10 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor_i: usize) -> io::Result
     } 
     // Move cursor back to previous position
     if lines_after_cursor > 0 {
-        term.move_cursor_up(lines_after_cursor - 1);
+        term.move_cursor_up(lines_after_cursor-1)?;
     }
-    term.move_cursor_left(terminal_width);
-    term.move_cursor_right(prev_cursor_position % terminal_width);
+    term.move_cursor_left(terminal_width)?;
+    term.move_cursor_right(prev_cursor_position % terminal_width)?;
     Ok(())
 }
 
