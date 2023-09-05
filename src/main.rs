@@ -11,7 +11,6 @@ const PROMPT_STR: &'static str = &"rash>-";
 
 fn main() {
 
-    test_term_size();
 
     let cmd = terminal::get_cmd_interactive();
     if let Ok(cmd) = cmd {

@@ -1,5 +1,5 @@
 use console::{self, Key, Term};
-use std::io::{self, Write};
+use std::io::{self, Write, BufRead};
 
 use crate::PROMPT_STR;
 
@@ -31,16 +31,42 @@ pub fn get_cmd_interactive() -> io::Result<String> {
             Key::Char(c) => {
                 // Add the character. Clear the line and reprint the line with the new character
                 // Add a new line if the current terminal line is full.
-                buffer.push(c);
-                buf_window_end_i += 1;
-                cursor_i += 1;
-                // term.write_all(c.to_string().as_bytes())?;
-                term.clear_line()?;
-                term.write_all(&buffer.as_bytes()[buf_window_start_i..buf_window_end_i])?;
-                if buf_window_end_i - buf_window_start_i == terminal_width {
-                    term.write_line("")?;
-                    buf_window_start_i = buf_window_end_i;
+                buffer.insert(cursor_i, c);
+                // cursor_i += 1;
+                // update_terminal(&mut term, &buffer, cursor_i);
+
+                // To update what is shown on the screen, all lines that are updated must be refreshed
+                // Count the number of lines including and below the cursor position
+                // Clear those lines
+                // Write those lines again by calculating the window into the buffer 
+                let prev_cursor_position = cursor_i;
+                // Find the line
+                let current_line_start_i = cursor_i - cursor_i % terminal_width;
+                let chars_after_cursor = buffer.len() - current_line_start_i;
+                let lines_after_cursor = chars_after_cursor / terminal_width
+                    + if chars_after_cursor % terminal_width == 0 {0} else {1};
+                // Replace the lines below with updated buffer
+                let mut i = current_line_start_i;
+                while i < buffer.len() {
+                    term.clear_line()?;
+                    let j = (i + terminal_width).min(buffer.len());
+                    if j < buffer.len() {
+                        term.write_line(&buffer.as_str()[i..j])?;
+                    } else {
+                        term.write_all(&buffer.as_bytes()[i..j])?;
+                    }
+                    i += terminal_width;
+                }                
+                
+                term.move_cursor_left(terminal_width);
+                term.move_cursor_up(lines_after_cursor - 1);
+                if prev_cursor_position % terminal_width == terminal_width - 1 {
+                    term.write_line("");
+                    term.move_cursor_down(1)?;
+                } else {
+                    term.move_cursor_right(prev_cursor_position % terminal_width + 1);
                 }
+                cursor_i += 1;
             },
             Key::Backspace => {
                 // Delete a character. Reduce the slice of the buffer that is shown.
