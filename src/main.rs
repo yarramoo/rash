@@ -4,7 +4,7 @@ use std::fmt;
 
 mod terminal;
 
-const PROMPT_STR: &str = "rash>-";
+const PROMPT_STR: &str = "rash> ";
 
 fn main() {
 

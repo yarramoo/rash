@@ -1,5 +1,5 @@
 use console::{self, Key, Term};
-use std::{io::{self, Write}, process::Termination};
+use std::io::{self, Write};
 
 use crate::PROMPT_STR;
 
@@ -28,31 +28,10 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     loop {
         let key = term.read_key()?;
         match key {
-            Key::Char(c) => {
-                // Add a character. Move cursor down if reached the end of line
-                buffer.insert(cursor_i, c);
-                update_terminal(&mut term, &buffer, cursor_i)?;
-                cursor_i += 1;
-                term.move_cursor_right(1)?;
-                if cursor_i % terminal_width == 0 {
-                    term.write_line("")?;
-                }
-            },
+            Key::Char(c) => write_char(&mut term, &mut buffer, c, &mut cursor_i)?,
             Key::Backspace => {
-                // Remove a character. More cursor up if deleting past start of line 
                 if cursor_i == PROMPT_STR.len() { continue; }
-                buffer.remove(cursor_i-1);
-                cursor_i -= 1;
-                // Special case when removing the last character in a line
-                if cursor_i % terminal_width == 0 && cursor_i == buffer.len() {
-                    term.clear_line()?;
-                    continue;
-                }
-                if cursor_i % terminal_width == terminal_width - 1 {
-                    term.move_cursor_up(1)?;
-                    term.move_cursor_right(terminal_width)?;
-                }
-                update_terminal(&mut term, &buffer, cursor_i)?;
+                delete_char(&mut term, &mut buffer, &mut cursor_i)?;
             },
             Key::Enter => {
                 // Input command
@@ -99,9 +78,7 @@ pub fn get_cmd_interactive() -> io::Result<String> {
                 term.move_cursor_up(1)?;
             },
             Key::ArrowDown => {
-                if buffer.len() - cursor_i < buffer.len() % terminal_width {
-                    continue;
-                }
+                if buffer.len() - cursor_i < buffer.len() % terminal_width { continue; }
                 if buffer.len() - cursor_i >= terminal_width {
                     cursor_i += terminal_width;
                 } else {
@@ -117,6 +94,40 @@ pub fn get_cmd_interactive() -> io::Result<String> {
 }
 
 
+fn write_char(term: &mut Term, buffer: &mut String, c: char, cursor_i: &mut usize) -> io::Result<()> {
+    let terminal_width = term.size().1 as usize;
+    let mut cursor_i = *cursor_i;
+    buffer.insert(cursor_i, c);
+    update_terminal(term, buffer, cursor_i)?;
+    cursor_i += 1;
+    term.move_cursor_right(1)?;
+    if cursor_i % terminal_width == 0 {
+        term.write_line("")?;
+    }
+    Ok(())
+}
+
+
+fn delete_char(term: &mut Term, buffer: &mut String, cursor_i: &mut usize) -> io::Result<()> {
+    // Remove a character. More cursor up if deleting past start of line 
+    let terminal_width = term.size().1 as usize;
+    let mut cursor_i = *cursor_i;
+    buffer.remove(cursor_i-1);
+    cursor_i -= 1;
+    // Special case when removing the last character in a line
+    if cursor_i % terminal_width == 0 && cursor_i == buffer.len() {
+        term.clear_line()?;
+        return Ok(())
+    }
+    if cursor_i % terminal_width == terminal_width - 1 {
+        term.move_cursor_up(1)?;
+        term.move_cursor_right(terminal_width)?;
+    }
+    update_terminal(term, buffer, cursor_i)?;
+    Ok(())
+}
+
+
 fn update_terminal(term: &mut Term, buffer: &str, cursor_i: usize) -> io::Result<()> {
     // Find the number of lines that need updating
     let prev_cursor_position = cursor_i;
@@ -125,8 +136,7 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor_i: usize) -> io::Result
     let current_line_start_i = cursor_i - cursor_i % terminal_width;
 
     let chars_after_cursor = buffer.len() - current_line_start_i;
-    // let lines_after_cursor = chars_after_cursor / terminal_width + (chars_after_cursor % terminal_width != 0) as usize;
-    let lines_after_cursor = (chars_after_cursor + terminal_width - 1) / terminal_width;
+    let lines_after_cursor = (chars_after_cursor + terminal_width - 1) / terminal_width; // ceiling div
     
     // Replace the lines below with updated buffer
     let mut i = current_line_start_i;
