@@ -99,7 +99,72 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     Ok(buffer.split_off(PROMPT_STR.len()))
 }
 
+struct Cursor {
+    buf_index: usize,
+    terminal_width: usize,
+}
 
+impl Cursor {
+    fn new(buf_index: usize, term: &Term) -> Self {
+        Cursor { buf_index, terminal_width: term.size().1 }
+    }
+
+    fn position(&self) -> (usize, usize) {
+        (self.buf_index / self.terminal_width, self.buf_index, self.terminal_width)
+    }
+
+    fn cursor_position(&self) -> (usize, usize) {
+        (self.buf_index / self.terminal_width, self.buf_index % self.terminal_width)
+    }
+
+    fn move_relative(&mut self, term: &mut Term, line_relative: isize, col_relative: isize) -> io::Result<()> {
+        // Move vertically
+        if line_relative > 0 {
+            term.move_cursor_down(line_relative as usize)?;
+        } else if line_relative < 0 {
+            term.move_cursor_down((-line_relative) as usize)?;
+        }
+        // Move horizontally
+        if col_relative > 0 {
+            term.move_cursor_right(col_relative as usize)?;
+        } else if col_relative < 0 {
+            term.move_cursor_left((-col_relative) as usize)?;
+        }
+        Ok(())
+    }
+}
+
+/// Find the cursor position (line, col). line measured by lines down from beginning. col measured by characters from the left
+
+/// Find the cursor index from a given line and column
+fn cursor_index(terminal_width: usize, line: usize, col: usize) -> usize {
+    line * terminal_width + col
+}
+
+/// Move the cursor to a target index. Passing terminal width explicitly because the terminal size may have changed
+fn move_cursor_given_index(
+    term: &mut Term, 
+    terminal_width: usize, 
+    current_index: usize, 
+    target_index: usize
+) -> io::Result<()>
+{
+    let (current_line, current_row) = cursor_position(terminal_width, current_index);
+    let (target_line, target_row) = cursor_position(terminal_width, target_index);
+    // Move vertically
+    if target_line < current_line {
+        term.move_cursor_up(current_line - target_line)?;
+    } else if target_line > current_line {
+        term.move_cursor_down(target_line - current_line)?;
+    }
+    // Move horizontally
+    if target_row < current_row {
+        term.move_cursor_left(current_row - target_row)?;
+    } else if target_row > current_row {
+        term.move_cursor_right(target_row - current_row)?;
+    }
+    Ok(())
+}
 
 fn write_char(term: &mut Term, buffer: &mut String, c: char, cursor_i: &mut usize) -> io::Result<()> {
     let terminal_width = term.size().1 as usize;
@@ -156,11 +221,7 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor_i: usize) -> io::Result
         i += terminal_width;
     } 
     // Move cursor back to previous position
-    if lines_after_cursor > 0 {
-        term.move_cursor_up(lines_after_cursor-1)?;
-    }
-    term.move_cursor_left(terminal_width)?;
-    term.move_cursor_right(prev_cursor_position % terminal_width)?;
+    move_cursor_given_index(term, terminal_width, buffer.len(), cursor_i)?;
     Ok(())
 }
 
