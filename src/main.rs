@@ -10,6 +10,7 @@ fn main() {
 
 
     let cmd = terminal::get_cmd_interactive();
+    // dbg!(cmd);
     if let Ok(cmd) = cmd {
         println!("Received: {cmd}");
         let cmd_vec = cmd.split(' ').collect::<Vec<_>>();

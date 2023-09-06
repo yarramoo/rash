@@ -1,5 +1,5 @@
 use console::{self, Key, Term};
-use std::{io::{self, Write}, arch::x86_64::_MM_FROUND_CUR_DIRECTION};
+use std::io::{self, Write};
 
 use crate::PROMPT_STR;
 
@@ -20,19 +20,31 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     let mut term = Term::stdout();
     let terminal_width = term.size().1 as usize;
     // Command String buffer 
-    let mut buffer = "m".repeat(terminal_width - terminal_width / 10);
-    // let mut buffer = String::from(PROMPT_STR);
-    let mut cursor_i = buffer.len();
-    let mut cursor = Cursor::new(buffer.len(), terminal_width);
+    // let mut buffer = "m".repeat(5 * terminal_width - terminal_width / 10);
+    let mut buffer = String::from(PROMPT_STR);
+    let mut cursor = Cursor::new(buffer.len(), term.size().1 as usize);
 
     term.write_all(buffer.as_bytes())?;
 
     loop {
         // Check if the terminal size changed
         let new_terminal_width = term.size().1 as usize;
-        if new_terminal_width != terminal_width {
+        if new_terminal_width != cursor.terminal_width {
             // Redraw the command for new width
-
+            let total_old_lines = buffer.len() / cursor.terminal_width + 1;
+            let old_index = cursor.buf_index;
+            // Clear old characters
+            cursor.move_relative(&mut term, -(total_old_lines as isize), 0)?;
+            for _ in 0..total_old_lines {
+                cursor.clear_line(&mut term)?;
+                cursor.move_relative(&mut term, 1, 0)?;
+            }
+            cursor.jump_to_index(&mut term, 0)?;
+            // Write new characters with updated width
+            cursor.terminal_width = new_terminal_width;
+            update_terminal(&mut term, buffer.as_str(), &mut cursor)?;
+            // Return to old index
+            cursor.jump_to_index(&mut term, old_index)?;
         }
         let key = term.read_key()?;
         match key {
@@ -62,16 +74,20 @@ pub fn get_cmd_interactive() -> io::Result<String> {
             },
             Key::ArrowUp => {
                 if cursor.buf_index < cursor.terminal_width { continue; }
-                cursor.jump_checked(&mut term, -(terminal_width as isize), PROMPT_STR.len(), buffer.len())?;
+                cursor.jump_checked(&mut term, -(cursor.terminal_width as isize), PROMPT_STR.len(), buffer.len())?;
             },
             Key::ArrowDown => {
                 if cursor.buf_index >= cursor.terminal_width * (buffer.len() / cursor.terminal_width) { continue; }
-                cursor.jump_checked(&mut term, terminal_width as isize, PROMPT_STR.len(), buffer.len())?;
+                cursor.jump_checked(&mut term, cursor.terminal_width as isize, PROMPT_STR.len(), buffer.len())?;
             }
             _ => {},
         };
     }
-    Ok(buffer.split_off(PROMPT_STR.len()))
+    // TODO: Decide whether to just return the string including the prompt. We can handle that in processing. Might be better 
+    // than a reallocation just to trim it. 
+    // Could also just copy the characters down. Wouldn't involve a reallocation.
+    buffer.replace_range(..PROMPT_STR.len(), "");
+    Ok(buffer)
 }
 
 struct Cursor {
@@ -102,6 +118,11 @@ impl Cursor {
             panic!("{}", format!("Trying to jump to negative index. Current index: {}, jump length: {}", self.buf_index, jump_length));
         }
         self.buf_index = (self.buf_index as isize + jump_length) as usize;
+    }
+
+    fn jump_to_index(&mut self, term: &mut Term, buffer_index: usize) -> io::Result<()> {
+        let jump_length = buffer_index as isize - self.buf_index as isize;
+        self.jump(term, jump_length)
     }
 
     fn jump_checked(&mut self, term: &mut Term, mut jump_length: isize, index_lb: usize, index_ub: usize) -> io::Result<()> {
@@ -193,14 +214,12 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor: &mut Cursor) -> io::Re
     // Find the number of lines that need updating
     let old_cursor_index = cursor.buf_index;
     
-    // Jump to the start of each line and rewrite going down
-    cursor.jump(term, -(old_cursor_index as isize % cursor.terminal_width as isize))?;
-
+    // For each line including and below the cursor, delete and re-write from the updated buffer
     while cursor.buf_index != buffer.len() {
         cursor.clear_line(term)?;
         let i = cursor.buf_index;
         let j = (cursor.buf_index + cursor.terminal_width).min(buffer.len());
-        if j < buffer.len() || j % cursor.terminal_width == 0 {
+        if j % cursor.terminal_width == 0 {
             cursor.write_line(term, &buffer[i..j])?;
         } else {
             cursor.write_all(term, &buffer.as_bytes()[i..j])?;
