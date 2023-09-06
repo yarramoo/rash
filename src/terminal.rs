@@ -26,6 +26,12 @@ pub fn get_cmd_interactive() -> io::Result<String> {
     term.write_all(buffer.as_bytes())?;
 
     loop {
+        // Check if the terminal size changed
+        let new_terminal_width = term.size().1 as usize;
+        if new_terminal_width != terminal_width {
+            // Redraw the command for new width
+
+        }
         let key = term.read_key()?;
         match key {
             Key::Char(c) => write_char(&mut term, &mut buffer, c, &mut cursor_i)?,
@@ -94,14 +100,14 @@ pub fn get_cmd_interactive() -> io::Result<String> {
 }
 
 
+
 fn write_char(term: &mut Term, buffer: &mut String, c: char, cursor_i: &mut usize) -> io::Result<()> {
     let terminal_width = term.size().1 as usize;
-    let mut cursor_i = *cursor_i;
-    buffer.insert(cursor_i, c);
-    update_terminal(term, buffer, cursor_i)?;
-    cursor_i += 1;
+    buffer.insert(*cursor_i, c);
+    update_terminal(term, buffer, *cursor_i)?;
+    *cursor_i += 1;
     term.move_cursor_right(1)?;
-    if cursor_i % terminal_width == 0 {
+    if *cursor_i % terminal_width == 0 {
         term.write_line("")?;
     }
     Ok(())
@@ -111,19 +117,18 @@ fn write_char(term: &mut Term, buffer: &mut String, c: char, cursor_i: &mut usiz
 fn delete_char(term: &mut Term, buffer: &mut String, cursor_i: &mut usize) -> io::Result<()> {
     // Remove a character. More cursor up if deleting past start of line 
     let terminal_width = term.size().1 as usize;
-    let mut cursor_i = *cursor_i;
-    buffer.remove(cursor_i-1);
-    cursor_i -= 1;
+    buffer.remove(*cursor_i-1);
+    *cursor_i -= 1;
     // Special case when removing the last character in a line
-    if cursor_i % terminal_width == 0 && cursor_i == buffer.len() {
+    if *cursor_i % terminal_width == 0 && *cursor_i == buffer.len() {
         term.clear_line()?;
         return Ok(())
     }
-    if cursor_i % terminal_width == terminal_width - 1 {
+    if *cursor_i % terminal_width == terminal_width - 1 {
         term.move_cursor_up(1)?;
         term.move_cursor_right(terminal_width)?;
     }
-    update_terminal(term, buffer, cursor_i)?;
+    update_terminal(term, buffer, *cursor_i)?;
     Ok(())
 }
 
