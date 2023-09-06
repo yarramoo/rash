@@ -171,9 +171,6 @@ fn write_char(term: &mut Term, buffer: &mut String, c: char, cursor: &mut Cursor
     buffer.insert(cursor.buf_index, c);
     update_terminal(term, buffer, cursor)?;
     cursor.jump(term, 1)?;
-    if cursor.buf_index % cursor.terminal_width == 0 {
-        cursor.write_line(term, "")?;
-    }
     Ok(())
 }
 
@@ -203,14 +200,16 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor: &mut Cursor) -> io::Re
         cursor.clear_line(term)?;
         let i = cursor.buf_index;
         let j = (cursor.buf_index + cursor.terminal_width).min(buffer.len());
-        cursor.write_all(term, &buffer.as_bytes()[i..j])?;
-        if j != buffer.len() {
-            cursor.write_line(term, "")?;
+        if j < buffer.len() || j % cursor.terminal_width == 0 {
+            cursor.write_line(term, &buffer[i..j])?;
+        } else {
+            cursor.write_all(term, &buffer.as_bytes()[i..j])?;
         }
     }
 
     // Jump back to previous position
-    let jump_back_length =  old_cursor_index as isize - cursor.buf_index as isize;
+    let jump_back_length = old_cursor_index as isize - cursor.buf_index as isize;
+    // dbg!(jump_back_length);
     cursor.jump(term, jump_back_length)?;
     Ok(())
 }
