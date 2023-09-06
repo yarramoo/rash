@@ -1,5 +1,5 @@
 use console::{self, Key, Term};
-use std::io::{self, Write};
+use std::{io::{self, Write}, arch::x86_64::_MM_FROUND_CUR_DIRECTION};
 
 use crate::PROMPT_STR;
 
@@ -52,48 +52,21 @@ pub fn get_cmd_interactive() -> io::Result<String> {
             },
             Key::ArrowRight => {
                 // Move right if we are still within the buffer space
-                // Two cases. a) we are within a line so we just move right. b) we are on the right edge and must go down a line 
-                if cursor_i == buffer.len() { continue; }
-                if cursor_i % terminal_width != terminal_width - 1 {
-                    term.move_cursor_right(1)?;
-                } else {
-                    term.move_cursor_down(1)?;
-                    term.move_cursor_left(terminal_width)?;
-                }
-                cursor_i += 1;
+                // Two cases. a) we are within a line so we just move right. b) we are on the right edge and must go down a line
+                if cursor.buf_index == buffer.len() { continue; }
+                cursor.jump(&mut term, 1)?;
             },
             Key::ArrowLeft  => {
-                if cursor_i == PROMPT_STR.len() { continue; }
-                // Two cases. a) we are within a line so we just move left. b) we are on the left edge of the 
-                // line so we must move up and to the right
-                if cursor_i % terminal_width != 0 {
-                    term.move_cursor_left(1)?;
-                } else {
-                    term.move_cursor_up(1)?;
-                    term.move_cursor_right(terminal_width)?;
-                }
-                cursor_i -= 1;
+                if cursor.buf_index == PROMPT_STR.len() { continue; }
+                cursor.jump(&mut term, -1)?;
             },
             Key::ArrowUp => {
-                if cursor_i < terminal_width { continue; }
-                if cursor_i - terminal_width < PROMPT_STR.len() {
-                    let r = terminal_width - (cursor_i - PROMPT_STR.len());
-                    term.move_cursor_right(r)?;
-                    cursor_i = PROMPT_STR.len();
-                } else {
-                    cursor_i -= terminal_width;
-                }
-                term.move_cursor_up(1)?;
+                if cursor.buf_index < cursor.terminal_width { continue; }
+                cursor.jump_checked(&mut term, -(terminal_width as isize), PROMPT_STR.len(), buffer.len())?;
             },
             Key::ArrowDown => {
-                if buffer.len() - cursor_i < buffer.len() % terminal_width { continue; }
-                if buffer.len() - cursor_i >= terminal_width {
-                    cursor_i += terminal_width;
-                } else {
-                    term.move_cursor_left(terminal_width - (buffer.len() - cursor_i))?;
-                    cursor_i = buffer.len();
-                }
-                term.move_cursor_down(1)?;
+                if cursor.buf_index >= cursor.terminal_width * (buffer.len() / cursor.terminal_width) { continue; }
+                cursor.jump_checked(&mut term, terminal_width as isize, PROMPT_STR.len(), buffer.len())?;
             }
             _ => {},
         };
@@ -142,15 +115,11 @@ impl Cursor {
         Ok(())
     }
 
-    fn jump(&mut self, term: &mut Term, mut jump_length: isize) -> io::Result<()> {
+    fn jump(&mut self, term: &mut Term, jump_length: isize) -> io::Result<()> {
         // Get current and target coordinates
         let (cur_line, cur_col) = self.cursor_position();
-        // dbg!(cur_line);
-        // dbg!(cur_col);
         self.update_index(jump_length);
         let (target_line, target_col) = self.cursor_position();
-        // dbg!(target_line);
-        // dbg!(target_col);
         // Move cursor in terminal
         self.move_relative(
             term,
@@ -161,22 +130,19 @@ impl Cursor {
     }
 
     fn move_relative(&mut self, term: &mut Term, line_relative: isize, col_relative: isize) -> io::Result<()> {
+        use std::cmp::Ordering as O;
         // Move vertically
-        if line_relative > 0 {
-            term.move_cursor_down(line_relative as usize)?;
-            // println!("Moving down {line_relative}");
-        } else if line_relative < 0 {
-            term.move_cursor_up((-line_relative) as usize)?;
-            // println!("Moving up {}", -line_relative);
-        }
+        match line_relative.cmp(&0) {
+            O::Greater => term.move_cursor_down(line_relative as usize)?,
+            O::Less    => term.move_cursor_up((-line_relative) as usize)?,
+            O::Equal   => {}
+        };
         // Move horizontally
-        if col_relative > 0 {
-            term.move_cursor_right(col_relative as usize)?;
-            // println!("Moving right {}", col_relative);
-        } else if col_relative < 0 {
-            term.move_cursor_left((-col_relative) as usize)?;
-            // println!("Moving left {}", -col_relative);
-        }
+        match col_relative.cmp(&0) {
+            O::Greater => term.move_cursor_right(col_relative as usize)?,
+            O::Less    => term.move_cursor_left((-col_relative) as usize)?,
+            O::Equal   => {}
+        };
         Ok(())
     }
 
@@ -201,35 +167,10 @@ impl Cursor {
     }
 }
 
-/// Move the cursor to a target index. Passing terminal width explicitly because the terminal size may have changed
-// fn move_cursor_given_index(
-//     term: &mut Term, 
-//     terminal_width: usize, 
-//     current_index: usize, 
-//     target_index: usize
-// ) -> io::Result<()>
-// {
-//     let (current_line, current_row) = cursor_position(terminal_width, current_index);
-//     let (target_line, target_row) = cursor_position(terminal_width, target_index);
-//     // Move vertically
-//     if target_line < current_line {
-//         term.move_cursor_up(current_line - target_line)?;
-//     } else if target_line > current_line {
-//         term.move_cursor_down(target_line - current_line)?;
-//     }
-//     // Move horizontally
-//     if target_row < current_row {
-//         term.move_cursor_left(current_row - target_row)?;
-//     } else if target_row > current_row {
-//         term.move_cursor_right(target_row - current_row)?;
-//     }
-//     Ok(())
-// }
-
 fn write_char(term: &mut Term, buffer: &mut String, c: char, cursor: &mut Cursor) -> io::Result<()> {
     buffer.insert(cursor.buf_index, c);
     update_terminal(term, buffer, cursor)?;
-    cursor.jump(term, 1);
+    cursor.jump(term, 1)?;
     if cursor.buf_index % cursor.terminal_width == 0 {
         cursor.write_line(term, "")?;
     }
@@ -241,7 +182,6 @@ fn delete_char(term: &mut Term, buffer: &mut String, cursor: &mut Cursor) -> io:
     // Remove a character. More cursor up if deleting past start of line 
     buffer.remove(cursor.buf_index-1);
     cursor.jump(term, -1)?;
-    // term.write("Hello".as_bytes())?;
     // Special case when removing the last character in a line
     if  cursor.buf_index % cursor.terminal_width == 0 && cursor.buf_index == buffer.len() {
         term.clear_line()?;
@@ -265,12 +205,12 @@ fn update_terminal(term: &mut Term, buffer: &str, cursor: &mut Cursor) -> io::Re
         let j = (cursor.buf_index + cursor.terminal_width).min(buffer.len());
         cursor.write_all(term, &buffer.as_bytes()[i..j])?;
         if j != buffer.len() {
-            cursor.write_line(term, "");
+            cursor.write_line(term, "")?;
         }
     }
 
     // Jump back to previous position
     let jump_back_length =  old_cursor_index as isize - cursor.buf_index as isize;
-    cursor.jump(term, jump_back_length);
+    cursor.jump(term, jump_back_length)?;
     Ok(())
 }
